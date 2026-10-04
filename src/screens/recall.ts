@@ -3,7 +3,7 @@ import { judge, POINTS } from "../match";
 import { recallOrder } from "../rng";
 import { swoosh } from "../sound";
 import type { Drawing, GameConfig, GameResult, RoundResult } from "../types";
-import { $, html, ICONS } from "../ui";
+import { $, frameCode, html, ICONS } from "../ui";
 
 interface Options {
   config: GameConfig;
@@ -20,48 +20,50 @@ export function renderRecall(root: HTMLElement, { config, words, drawings, onDon
   const startedAt = performance.now();
 
   const el = html(`
-    <main class="screen recall">
-      <header class="island topbar">
-        <button class="icon-btn" id="quit" aria-label="Quit to start">${ICONS.close}</button>
-        <span class="mono topbar__progress"><b id="idx">01</b> / ${String(words.length).padStart(2, "0")}</span>
-        <span class="topbar__word topbar__word--muted">What was this?</span>
+    <main class="screen focus recall" id="main">
+      <h1 class="sr-only">Name your drawings</h1>
+      <header class="focusbar">
+        <button class="textbtn textbtn--icon" type="button" id="quit" aria-label="Quit to start">${ICONS.back}<span>Quit</span></button>
+        <p class="cue cue--muted" aria-hidden="true">what was this?</p>
+        <p class="framecount num"><span>Print <b id="idx">01</b>&#8239;/&#8239;${String(words.length).padStart(2, "0")}</span></p>
       </header>
 
       <div class="stage">
-        <div class="bezel bezel--canvas" id="card">
-          <div class="bezel__core paper">
-            <canvas id="view" aria-label="Your drawing"></canvas>
-            <span class="blank-note" id="blank" hidden>you drew nothing 🙈</span>
-          </div>
-        </div>
-
-        <form class="guess" id="form" autocomplete="off">
-          <div class="bezel bezel--input">
-            <div class="bezel__core guess__core">
-              <input id="guess" class="guess__input" type="text" inputmode="text" enterkeyhint="next"
-                autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="40"
-                placeholder="Type the word…" aria-label="Your guess" />
-              <button class="btn btn--primary btn--compact" type="submit">
-                <span class="btn__label">Next</span><span class="btn__icon">${ICONS.enter}</span>
-              </button>
+        <div class="stage__inner">
+          <div class="film">
+            <p class="film__edge num" aria-hidden="true"><span translate="no">DR-${words.length}</span><span id="edge">01A</span><span>▸</span></p>
+            <div class="print print--develop" id="print">
+              <canvas id="view" aria-label="Your drawing"></canvas>
+              <span class="blank-note" id="blank" hidden>Blank frame</span>
             </div>
           </div>
-          <p class="hint">Press <kbd>Enter</kbd> to continue — leave it blank to pass.</p>
-        </form>
+
+          <form class="guess" id="form" autocomplete="off">
+            <label class="label" for="guess">What did you draw?</label>
+            <div class="guess__row">
+              <input id="guess" name="guess" class="guess__input" type="text" inputmode="text" enterkeyhint="next"
+                autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="40"
+                placeholder="Type the word…" />
+              <button class="btn btn--compact" type="submit"><span>Next Print</span>${ICONS.arrow}</button>
+            </div>
+            <p class="hint">Press <kbd>Enter</kbd> to continue. Leave it empty to skip.</p>
+          </form>
+        </div>
       </div>
     </main>
   `);
 
   const canvas = $<HTMLCanvasElement>(el, "#view");
   const input = $<HTMLInputElement>(el, "#guess");
-  const card = $(el, "#card");
+  const print = $(el, "#print");
   const blank = $(el, "#blank");
   const idxEl = $(el, "#idx");
+  const edgeEl = $(el, "#edge");
 
   root.replaceChildren(el);
 
   const sizeFor = () =>
-    Math.floor(Math.max(200, Math.min(window.innerWidth - 32 - 16, window.innerHeight * 0.52, 520)));
+    Math.floor(Math.max(180, Math.min(window.innerWidth - (window.innerWidth <= 480 ? 16 : 32) - 24, window.innerHeight - 290, 560)));
 
   const paint = () => {
     const i = order[step];
@@ -71,15 +73,17 @@ export function renderRecall(root: HTMLElement, { config, words, drawings, onDon
     renderDrawing(ctx, drawings[i], 0, 0, size);
     blank.hidden = !isBlank(drawings[i]);
     idxEl.textContent = String(step + 1).padStart(2, "0");
+    edgeEl.textContent = frameCode(step);
   };
 
   const show = () => {
     paint();
     input.value = "";
-    card.classList.remove("is-swapping");
-    void card.offsetWidth; // restart the entry animation
-    card.classList.add("is-swapping");
-    input.focus({ preventScroll: true });
+    print.classList.remove("is-developing");
+    void print.offsetWidth; // restart the develop animation
+    print.classList.add("is-developing");
+    // Only autofocus where a hardware keyboard is likely; on touch it would pop the keyboard over the print.
+    if (matchMedia("(pointer: fine)").matches || step > 0) input.focus({ preventScroll: true });
   };
 
   const finish = () => {

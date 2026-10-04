@@ -1,7 +1,7 @@
 import { DrawingPad } from "../canvas";
 import { swoosh, tick } from "../sound";
 import type { Drawing, GameConfig } from "../types";
-import { $, escapeHtml, html, ICONS } from "../ui";
+import { $, escapeHtml, frameCode, html, ICONS } from "../ui";
 
 const COUNTDOWN_STEP_MS = 650;
 const FLASH_MS = 400;
@@ -17,21 +17,25 @@ interface Options {
 
 export function renderDraw(root: HTMLElement, { config, words, onDone, onQuit }: Options): () => void {
   const el = html(`
-    <main class="screen draw">
-      <header class="island topbar">
-        <button class="icon-btn" id="quit" aria-label="Quit to start">${ICONS.close}</button>
-        <span class="mono topbar__progress"><b id="idx">01</b> / ${String(words.length).padStart(2, "0")}</span>
-        <span class="topbar__word" id="word" aria-live="polite">&nbsp;</span>
+    <main class="screen focus draw" id="main">
+      <h1 class="sr-only">Drawing round</h1>
+      <header class="focusbar">
+        <button class="textbtn textbtn--icon" type="button" id="quit" aria-label="Quit to start">${ICONS.back}<span>Quit</span></button>
+        <p class="cue" id="word" aria-live="polite">&nbsp;</p>
+        <p class="framecount num"><span class="safelight" aria-hidden="true"></span><span>Frame <b id="idx">01</b>&#8239;/&#8239;${String(words.length).padStart(2, "0")}</span></p>
       </header>
 
       <div class="stage">
-        <div class="bezel bezel--canvas">
-          <div class="bezel__core paper">
-            <canvas id="pad" aria-label="Drawing canvas"></canvas>
-            <div class="overlay" id="overlay"></div>
+        <div class="stage__inner">
+          <div class="film">
+            <p class="film__edge num" aria-hidden="true"><span translate="no">DR-${words.length}</span><span id="edge">01A</span><span>▸</span></p>
+            <div class="print">
+              <canvas id="pad" aria-label="Drawing canvas"></canvas>
+              <div class="overlay" id="overlay"></div>
+            </div>
+            <div class="timer" aria-hidden="true"><div class="timer__fill" id="bar"></div></div>
           </div>
         </div>
-        <div class="timer" aria-hidden="true"><div class="timer__fill" id="bar"></div></div>
       </div>
     </main>
   `);
@@ -40,16 +44,15 @@ export function renderDraw(root: HTMLElement, { config, words, onDone, onQuit }:
   const overlay = $(el, "#overlay");
   const wordEl = $(el, "#word");
   const idxEl = $(el, "#idx");
+  const edgeEl = $(el, "#edge");
   const bar = $(el, "#bar");
 
   root.replaceChildren(el);
 
+  // Space taken by the header, film borders and timer around the print.
   const sizeFor = () =>
-    Math.floor(Math.max(220, Math.min(window.innerWidth - 32 - 16, window.innerHeight - 190, 640)));
-  const timer = $(el, ".timer");
-  const initialSize = sizeFor();
-  const pad = new DrawingPad(canvas, initialSize);
-  timer.style.width = `${initialSize + 16}px`;
+    Math.floor(Math.max(200, Math.min(window.innerWidth - (window.innerWidth <= 480 ? 16 : 32) - 24, window.innerHeight - 174, 680)));
+  const pad = new DrawingPad(canvas, sizeFor());
 
   const drawings: Drawing[] = [];
   const durationMs = config.drawTime * 1000;
@@ -77,6 +80,7 @@ export function renderDraw(root: HTMLElement, { config, words, onDone, onQuit }:
       bar.style.transform = "scaleX(1)";
     } else if (next === "flash") {
       idxEl.textContent = String(index + 1).padStart(2, "0");
+      edgeEl.textContent = frameCode(index);
       wordEl.innerHTML = "&nbsp;";
       bar.style.transform = "scaleX(1)";
       bar.classList.remove("is-urgent");
@@ -98,7 +102,7 @@ export function renderDraw(root: HTMLElement, { config, words, onDone, onQuit }:
       } else if (n !== lastCount) {
         lastCount = n;
         tick(n === 1);
-        showOverlay(`<span class="count" data-n="${n}">${n}</span><span class="count-hint">Get ready</span>`, "count");
+        showOverlay(`<span class="count" data-n="${n}">${n}</span><span class="overlay__hint">Get ready</span>`, "count");
       }
     } else if (phase === "flash") {
       if (elapsed >= FLASH_MS) enter("draw");
@@ -132,8 +136,9 @@ export function renderDraw(root: HTMLElement, { config, words, onDone, onQuit }:
     pad.setEnabled(false);
     pad.clear();
     showOverlay(
-      `<span class="eyebrow">Paused</span><span class="paused-title">Tap to resume</span>
-       <span class="count-hint">Word ${index + 1} restarts fresh</span>`,
+      `<span class="label label--ink">Paused</span>
+       <button class="btn" type="button">Resume</button>
+       <span class="overlay__hint">Frame ${index + 1} restarts with a fresh exposure</span>`,
       "paused",
     );
   };
@@ -150,11 +155,7 @@ export function renderDraw(root: HTMLElement, { config, words, onDone, onQuit }:
     if (e.key === "Escape") pause();
     else if (phase === "paused" && (e.key === " " || e.key === "Enter")) resume();
   };
-  const onResize = () => {
-    const size = sizeFor();
-    pad.resize(size);
-    timer.style.width = `${size + 16}px`;
-  };
+  const onResize = () => pad.resize(sizeFor());
 
   document.addEventListener("visibilitychange", onVisibility);
   window.addEventListener("keydown", onKey);

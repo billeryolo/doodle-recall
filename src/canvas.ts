@@ -1,6 +1,6 @@
 import type { Drawing, Stroke } from "./types";
 
-export const INK = "#1d1813";
+export const INK = "#2b2723";
 const LINE_WIDTH = 0.022; // fraction of the canvas side
 
 /** Size a canvas's backing store for crisp lines on high-DPI screens. */
